@@ -59,4 +59,4 @@ cargo run -- programme.vtx             ← noyau Rust
 
 Pour toute demande commerciale → contactez-moi à : **[franck.comb@proton.me]**
 
-Voir le fichier [`LICENSE`](./LICENSE) pour le texte complet.
+Voir le fichier [`LICENSING`](./LICENSING.md) pour le texte complet.
