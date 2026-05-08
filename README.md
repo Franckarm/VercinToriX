@@ -6,7 +6,7 @@ cube chromatique comme espace mémoire, ADN quadrinaire.
 ## Philosophie
 
 > Penser comme le vivant. Parler comme l'humain.
-> Voir comme la lumière. Se lier comme la matière.
+> Voir la lumière. Se lier comme la matière.
 
 ## Caractéristiques uniques
 
