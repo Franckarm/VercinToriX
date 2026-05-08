@@ -1,0 +1,56 @@
+← test_v03.vtx — Test complet VERCINTORIX V0.3
+
+TARVOS AUTO precision(f32) contexte(calcul)
+
+NEMETON TestBase {
+    declarer nom
+    definir  nom → "VERCINTORIX V0.3"
+    afficher nom → ecran
+
+    figer version → "0.3"
+    afficher version → ecran
+
+    declarer compteur → 0
+    definir  compteur → compteur + 1
+    afficher compteur → ecran
+}
+
+NEMETON TestCondition {
+    declarer age → 20
+
+    si age > 18 {
+        afficher "Majeur" → ecran
+    } sinon {
+        afficher "Mineur" → ecran
+    }
+}
+
+NEMETON TestRepeter {
+    declarer n → 0
+    repeter 3 {
+        definir n → n + 1
+        afficher n → ecran
+    }
+}
+
+NEMETON TestDUBI {
+    declarer signal
+    definir  signal → CERTAIN
+
+    DUBI signal ?
+        CERTAIN  → afficher "Signal fort" → ecran
+        PROBABLE → afficher "Signal moyen" → ecran
+        BRUME    → afficher "Signal faible" → ecran
+        INCONNU  → afficher "Pas de signal" → ecran
+}
+
+NEMETON TestContexte contexte(hardware) {
+    declarer capteur
+    definir  capteur → CERTAIN
+
+    DUBI capteur ?
+        actif    → afficher "Capteur actif" → ecran
+        instable → afficher "Capteur instable" → ecran
+        inactif  → afficher "Capteur inactif" → ecran
+        absent   → afficher "Capteur absent" → ecran
+}
