@@ -1,10 +1,7 @@
-# VercinToriX
-Langage de programmation universel — cube chromatique, logique trinaire, ADN quadrinaire
-
 # VERCINTORIX
 
 **Langage de programmation universel** — logique trinaire native,
-cube chromatique comme espace mémoire, ADN quadrinaire, architecture Rust.
+cube chromatique comme espace mémoire, ADN quadrinaire.
 
 ## Philosophie
 
