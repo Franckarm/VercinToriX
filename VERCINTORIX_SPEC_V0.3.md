@@ -649,26 +649,6 @@ AGC → mémoire    — stockage mémoire.cube
 
 ---
 
-## 13. Feuille de route Rust V0.3
-
-```
-✅ Rust V0.2  → lecture .vtx + déclarer + définir + afficher
-
-En cours — Rust V0.3 :
-⬜ si / sinon / tantque / répéter
-⬜ DUBI contextuel avec vocabulaires
-⬜ HELIX avec mutation et allèles
-⬜ DRUS 3 modes
-⬜ AVON RECEVOIR / FOURNIR
-⬜ PAR (crate rayon)
-⬜ GWEL + ADBERT
-⬜ ADN quadrinaire (src/adn.rs)
-⬜ GRANN + cube chromatique 4D
-⬜ cargo build --release → vercintorix.exe
-```
-
----
-
 *VERCINTORIX V0.3 — Spécification officielle*
 *"Penser comme le vivant. Parler comme l'humain.*
 *Voir comme la lumière. Se lier comme la matière."*
