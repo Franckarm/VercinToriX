@@ -191,83 +191,41 @@ pub fn executer_ligne(
             let avant = sub;
             executer_ligne(&l, mem, ctx, &bloc, &mut sub);
             if sub == avant { sub += 1; } else { sub += 1; }
-        }
-
-    // ── HELIX ───────────────────────────────────────────
+    }    
+        
+    // HELIX
     } else if ligne.starts_with("HELIX") {
-        let rest = ligne.trim_start_matches("HELIX").trim()
+        let nom = ligne.trim_start_matches("HELIX").trim()
             .trim_end_matches('{').trim();
-        
-        // Extraire nom + position hex optionnelle
-        // HELIX décision #FF8800
-        let (nom, pos_hex) = extraire_nom_hex(rest);
-        
-        println!("{}\x1b[96mHELIX {} {}\x1b[0m", 
-            indent, nom, pos_hex.as_deref().unwrap_or(""));
+        println!("{}\x1b[35mHELIX {}\x1b[0m", indent, nom);
 
-        *idx += 1;
-        let bloc = collecter_bloc(lignes, idx);
+        let mut alleles: Vec<String> = Vec::new();
+        let mut mutation_taux: f32   = 0.0;
 
-        let mut alleles: Vec<(String, String, [f32;3])> = Vec::new();
-        let mut mutation_taux = 0.0f32;
-        let mut selection_mode = "premier"; // ou "cube"
+        while *idx < lignes.len() {
+            let l = lignes[*idx].trim();
+            *idx += 1;
+            if l == "}" { break; }
 
-        for l in &bloc {
-            let l = l.trim();
             if l.starts_with("ALLELE") {
-                let reste = l.trim_start_matches("ALLELE").trim();
-                if let Some((label, action)) = reste.split_once('→') {
-                    let label = label.trim();
-                    // Parser la couleur hex du label si présente
-                    let couleur = hex_vers_rgb(label)
-                        .unwrap_or([0.5, 0.5, 0.5]);
-                    alleles.push((
-                        label.to_string(),
-                        action.trim().to_string(),
-                        couleur
-                    ));
-                }
+                let a = l.trim_start_matches("ALLELE").trim();
+                alleles.push(a.to_string());
+                println!("{}  \x1b[35mALLELE {}\x1b[0m", indent, a);
             } else if l.starts_with("MUTATION") {
-                mutation_taux = l.trim_start_matches("MUTATION")
-                    .trim().parse::<f32>().unwrap_or(0.0);
+                let t = l.trim_start_matches("MUTATION").trim();
+                mutation_taux = t.parse::<f32>().unwrap_or(0.0);
+                println!("{}  \x1b[35mMUTATION {}\x1b[0m", indent, mutation_taux);
             } else if l.starts_with("SELECTION") {
-                selection_mode = if l.contains("cube") { 
-                    "cube" 
-                } else { 
-                    "premier" 
-                };
+                let s = l.trim_start_matches("SELECTION").trim();
+                println!("{}  \x1b[35mSELECTION {}\x1b[0m", indent, s);
             }
         }
 
+        // Sélection aléatoire simple
         if !alleles.is_empty() {
-            // Position courante — depuis hex ou centre du cube
-            let pos_courante = pos_hex
-                .as_deref()
-                .and_then(hex_vers_rgb)
-                .unwrap_or([0.5, 0.5, 0.5]);
-
-            let choix = match selection_mode {
-                "cube" => {
-                    // Trouver l'allele le plus proche dans le cube
-                    alleles.iter().enumerate()
-                        .min_by(|(_, a), (_, b)| {
-                            distance_cube(pos_courante, a.2)
-                                .partial_cmp(
-                                &distance_cube(pos_courante, b.2))
-                                .unwrap()
-                        })
-                        .map(|(i, _)| i)
-                        .unwrap_or(0)
-                }
-                _ => 0
-            };
-
-            let (label, action, rgb) = &alleles[choix];
-            println!("{}  \x1b[96m→ ALLELE {} {:?}\x1b[0m", 
-                indent, label, rgb);
-            executer_ligne(action, mem, ctx, lignes, idx);
+            let choix = &alleles[0];
+            println!("{}  \x1b[32m→ actif : {}\x1b[0m", indent, choix);
         }
-
 
     // ── PAR ─────────────────────────────────────────────
     } else if ligne.starts_with("PAR") {
