@@ -1,10 +1,12 @@
 // ========================================================
 //  VERCINTORIX V0.3 — executeur.rs
 // ========================================================
-
+use crate::adn::{encoder_type_i32, encoder_type_f32, 
+                 encoder_type_texte, vers_adn_str};
 use crate::memoire::{Memoire, Etat};
 use crate::collecteur::{collecter_bloc, executer_bloc};
 use std::collections::HashMap;
+use std::ops::Sub;
 
 // ── CONTEXTE ────────────────────────────────────────────
 
@@ -193,39 +195,132 @@ pub fn executer_ligne(
             if sub == avant { sub += 1; } else { sub += 1; }
     }    
         
-    // HELIX
+    // ── HELIX ───────────────────────────────────────────
     } else if ligne.starts_with("HELIX") {
-        let nom = ligne.trim_start_matches("HELIX").trim()
-            .trim_end_matches('{').trim();
-        println!("{}\x1b[35mHELIX {}\x1b[0m", indent, nom);
+        let entete = ligne.trim_start_matches("HELIX")
+            .trim().trim_end_matches('{').trim();
+        let nom_helix = entete.split_whitespace().next()
+            .unwrap_or("helix").to_string();
 
-        let mut alleles: Vec<String> = Vec::new();
-        let mut mutation_taux: f32   = 0.0;
+        // Hex de référence éventuel sur la ligne d'entête
+        let mut hex_ref_inline: Option<String> = None;
+        for tok in entete.split_whitespace() {
+            if tok.starts_with('#') {
+                hex_ref_inline = Some(tok.to_string());
+            }
+        }
 
+        let mut alleles: Vec<(String, String)> = Vec::new();
+        let mut sel_var: Option<String> = None;
+        let mut sel_axe: char = 'R';
+        let mut sel_min: f32  = 0.0;
+        let mut sel_max: f32  = 1.0;
+
+        *idx += 1;
         while *idx < lignes.len() {
-            let l = lignes[*idx].trim();
+            let l = lignes[*idx].trim().to_string();
             *idx += 1;
             if l == "}" { break; }
 
             if l.starts_with("ALLELE") {
-                let a = l.trim_start_matches("ALLELE").trim();
-                alleles.push(a.to_string());
-                println!("{}  \x1b[35mALLELE {}\x1b[0m", indent, a);
-            } else if l.starts_with("MUTATION") {
-                let t = l.trim_start_matches("MUTATION").trim();
-                mutation_taux = t.parse::<f32>().unwrap_or(0.0);
-                println!("{}  \x1b[35mMUTATION {}\x1b[0m", indent, mutation_taux);
+                if let Some(fleche) = l.find('\u{2192}') {
+                    let gauche = l[6..fleche].trim();
+                    let droite = l[fleche+3..].trim().to_string();
+                    // Extraire le hex (après @)
+                    let hex = if let Some(pos) = gauche.find('#') {
+                        gauche[pos..].split_whitespace().next()
+                            .unwrap_or("").to_string()
+                    } else { String::new() };
+                    if !hex.is_empty() {
+                        alleles.push((hex, droite));
+                    }
+                }
             } else if l.starts_with("SELECTION") {
-                let s = l.trim_start_matches("SELECTION").trim();
-                println!("{}  \x1b[35mSELECTION {}\x1b[0m", indent, s);
+                // SELECTION proche(var) axe(R) plage(0..60)
+                if let Some(s) = l.find("proche(") {
+                    let after = &l[s+7..];
+                    if let Some(e) = after.find(')') {
+                        sel_var = Some(after[..e].trim().to_string());
+                    }
+                }
+                if let Some(s) = l.find("axe(") {
+                    let after = &l[s+4..];
+                    if let Some(c) = after.chars().next() {
+                        sel_axe = c.to_ascii_uppercase();
+                    }
+                }
+                if let Some(s) = l.find("plage(") {
+                    let after = &l[s+6..];
+                    if let Some(e) = after.find(')') {
+                        let plage = &after[..e];
+                        if let Some((a, b)) = plage.split_once("..") {
+                            sel_min = a.trim().parse().unwrap_or(0.0);
+                            sel_max = b.trim().parse().unwrap_or(1.0);
+                        }
+                    }
+                }
             }
         }
 
-        // Sélection aléatoire simple
-        if !alleles.is_empty() {
-            let choix = &alleles[0];
-            println!("{}  \x1b[32m→ actif : {}\x1b[0m", indent, choix);
+    // Calcul du point cible
+    let cible = if let Some(var) = &sel_var {
+        let val = mem.eval(var).parse::<f32>().unwrap_or(0.0);
+        let norm = ((val - sel_min) / (sel_max - sel_min)).clamp(0.0, 1.0);
+        match sel_axe {
+            'R' => crate::cube::Point3D::new(norm, 0.0, 0.0),
+            'G' => crate::cube::Point3D::new(0.0, norm, 0.0),
+            'B' => crate::cube::Point3D::new(0.0, 0.0, norm),
+            _   => crate::cube::Point3D::new(norm, norm, norm),
         }
+    } else if let Some(h) = &hex_ref_inline {
+        crate::cube::hex_vers_point(h)
+            .unwrap_or(crate::cube::Point3D::new(0.5, 0.5, 0.5))
+    } else {
+        crate::cube::Point3D::new(0.5, 0.5, 0.5)
+    };
+
+    println!("{}HELIX \x1b[36m{}\x1b[0m \x1b[90mcible=({:.2},{:.2},{:.2})\x1b[0m",
+        indent, nom_helix, cible.r, cible.g, cible.b);
+
+    if alleles.is_empty() {
+        println!("{}  \x1b[31m(aucun ALLELE)\x1b[0m", indent);
+    } else {
+        let candidats: Vec<(String, crate::cube::Point3D)> = alleles.iter()
+            .filter_map(|(hex, _)| {
+                crate::cube::hex_vers_point(hex).map(|p| (hex.clone(), p))
+            })
+            .collect();
+
+        if let Some((hex_gagnant, dist)) =
+            crate::cube::plus_proche_parmi(&cible, &candidats)
+        {
+            let action = alleles.iter()
+                .find(|(h, _)| h == &hex_gagnant)
+                .map(|(_, a)| a.clone())
+                .unwrap_or_default();
+
+            let val_propre = action.trim_matches('"').to_string();
+            mem.definir(&nom_helix, &val_propre);
+
+            println!("{}  \x1b[92m→\x1b[0m {} \x1b[32m{}\x1b[0m \x1b[90m(dist {:.3})\x1b[0m",
+                indent, hex_gagnant, val_propre, dist);
+
+            for (hex, acte) in &alleles {
+                let p = crate::cube::hex_vers_point(hex)
+                    .unwrap_or(crate::cube::Point3D::new(0.0, 0.0, 0.0));
+                let d = cible.distance(&p);
+                let marker = if hex == &hex_gagnant { "✓" } else { "·" };
+                println!("{}  {} \x1b[90m{} dist={:.3} → {}\x1b[0m",
+                    indent, marker, hex, d, acte);
+            }
+
+            // Exécuter l'action gagnante
+            let refs: Vec<String> = vec![action.clone()];
+            let mut sub= 0;
+            executer_ligne(&refs[0], mem, ctx, &refs, &mut sub);
+        }
+    }
+
 
     // ── PAR ─────────────────────────────────────────────
     } else if ligne.starts_with("PAR") {
@@ -245,29 +340,59 @@ pub fn executer_ligne(
             if sub == avant { sub += 1; } else { sub += 1; }
         }
 
-    // ── AVON ────────────────────────────────────────────
-    } else if ligne.starts_with("AVON") {
-        let nom = ligne.trim_start_matches("AVON").trim()
-            .trim_end_matches('{').trim();
-        println!("{}\x1b[96mAVON {}\x1b[0m", indent, nom);
+    // ── AVON RECEVOIR ────────────────────────────────────
+    } else if ligne.starts_with("AVON RECEVOIR") {
+        let reste = ligne
+            .trim_start_matches("AVON RECEVOIR")
+            .trim();
 
-        *idx += 1;
-        let bloc = collecter_bloc(lignes, idx);
+        if let Some((source, dest)) = reste.split_once("→") {
+            let source = source.trim();
+            let dest   = dest.trim();
 
-        let mut sub = 0usize;
-        while sub < bloc.len() {
-            let l = bloc[sub].clone();
-            if l.trim().starts_with("RECEVOIR") {
-                println!("{}  RECEVOIR → flux entrant", indent);
-            } else if l.trim().starts_with("FOURNIR") {
-                println!("{}  FOURNIR → flux sortant", indent);
-            } else {
-                let avant = sub;
-                executer_ligne(&l, mem, ctx, &bloc, &mut sub);
-                if sub == avant { sub += 1; continue; }
-            }
-            sub += 1;
+            println!("{}AVON RECEVOIR \x1b[36m{}\x1b[0m → {}",
+                indent, source, dest);
+
+            let val = match source {
+                "capteur.temp"     => "82",
+                "capteur.humidite" => "65",
+                "capteur.pression" => "1013",
+                _                  => "0",
+            };
+
+            mem.definir(dest, val);
         }
+
+    // ── AVON FOURNIR ─────────────────────────────────────
+    } else if ligne.starts_with("AVON FOURNIR") {
+        let reste = ligne
+            .trim_start_matches("AVON FOURNIR")
+            .trim();
+
+        if let Some((source, dest)) = reste.split_once("→") {
+            let source = source.trim();
+            let dest   = dest.trim();
+            let val    = mem.eval(source);
+
+            println!("{}AVON FOURNIR \x1b[36m{}\x1b[0m → {} [\x1b[33m{}\x1b[0m]",
+                indent, source, dest, val);
+        }
+
+    // ── AVON flux interne ─────────────────────────────────
+    } else if ligne.starts_with("AVON") {
+        let reste = ligne
+            .trim_start_matches("AVON")
+            .trim();
+
+        if let Some((source, dest)) = reste.split_once("→") {
+            let source = source.trim();
+            let dest   = dest.trim();
+            let val    = mem.eval(source);
+
+            println!("{}AVON \x1b[96m{}\x1b[0m → {}", indent, source, dest);
+            mem.definir(dest, &val);
+        }
+
 
     // ── DUBI ────────────────────────────────────────────
         } else if ligne.starts_with("DUBI") {
@@ -580,14 +705,22 @@ pub fn executer_ligne(
             bloc_essayer.push(l);
         }
 
-        // Collecter bloc attraper
+       // Collecter bloc attraper
         while *idx < lignes.len() {
             let l = lignes[*idx].trim().to_string();
-            *idx += 1;
-            if l == "}" { break; }
-            if l == "{" { continue; }
+            if l == "}" { 
+                *idx += 1;  // consommer le }
+                break; 
+            }
+            if l == "{" { 
+                *idx += 1; 
+                continue; 
+            }
             bloc_attraper.push(l);
+            *idx += 1;
         }
+        // Ne pas faire return — laisser idx intact
+        // La boucle principale voit idx != avant ✅
 
         // Exécuter essayer
         let mut erreur: Option<String> = None;
@@ -632,6 +765,52 @@ pub fn executer_ligne(
                 .trim_start_matches("declarer")
                 .trim();
             mem.declarer(nom);
+        }
+
+    // ── ENCODER ─────────────────────────────────────────────
+    } else if ligne.starts_with("encoder ") {
+        let reste = ligne.trim_start_matches("encoder").trim();
+        if let Some((src, dst)) = reste.split_once(" → ") {
+            let src = src.trim();
+            let dst = dst.trim();
+            let val_str = mem.eval(src);
+
+            // Détection automatique du type
+            let codons = if let Ok(i) = val_str.parse::<i32>() {
+                crate::adn::encoder_type_i32(i)         // ← type i32
+            } else if let Ok(f) = val_str.parse::<f32>() {
+                crate::adn::encoder_type_f32(f)         // ← type f32
+            } else {
+                crate::adn::encoder_type_texte(&val_str) // ← type texte
+            };
+
+            let adn_str = crate::adn::vers_adn_str(&codons);
+            mem.definir(dst, &adn_str);
+        }
+
+    // ── DECODER ─────────────────────────────────────────────
+    } else if ligne.starts_with("decoder ") {
+        let reste = ligne.trim_start_matches("decoder").trim();
+        if let Some((src, dst)) = reste.split_once(" → ") {
+            let adn_str = mem.eval(src.trim());
+            let codons  = crate::adn::depuis_adn_str(&adn_str);
+            let val     = crate::adn::decoder_auto(&codons); // ← auto !
+            mem.definir(dst.trim(), &val);
+        }
+
+    // ── TRANSCRIRE : ADN → ARN (T → U) ─────────────────────
+    } else if ligne.starts_with("transcrire ") {
+        let reste = ligne.trim_start_matches("transcrire ").trim();
+        if let Some((src, dst)) = reste.split_once("→") {
+            let src = src.trim();
+            let dst = dst.trim();
+            let adn_str = mem.eval(src);
+
+            let arn_str: String = adn_str.chars()
+                .map(|c| if c == 'T' { 'U' } else { c })
+                .collect();
+
+            mem.definir(dst, &arn_str);
         }
 
     // ── définir ─────────────────────────────────────────

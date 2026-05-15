@@ -40,19 +40,15 @@ fn main() {
         let mut ctx = Contexte::new();
         let mut idx = 0;
 
-        while idx < lignes.len() {
-            let ligne = lignes[idx].clone();
-            let avant = idx;
-            executer_ligne(&ligne, &mut mem, &mut ctx, &lignes, &mut idx);
-            // Si executer_ligne n'a pas avancé idx, on avance nous-mêmes
-            if idx == avant {
-                idx += 1;
-            }
-            // Sécurité contre débordement
-            if idx > lignes.len() {
-                break;
-            }
+
+    while idx < lignes.len() {
+        let ligne = lignes[idx].clone();
+        let avant = idx;
+        executer_ligne(&ligne, &mut mem, &mut ctx, &lignes, &mut idx);
+        if idx == avant {
+            idx += 1;
         }
+    }
 
         println!("\n[ termine ]");
 }

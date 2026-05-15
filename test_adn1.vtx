@@ -1,0 +1,19 @@
+← test_adn.vtx
+
+TARVOS AUTO precision(adn)
+
+NEMETON TestADN {
+
+    ← Encoder un entier en ADN
+    definir age → 45
+    encoder age → adn_age
+    afficher adn_age → ecran
+
+    ← Décoder
+    decoder adn_age → retour
+    afficher retour → ecran
+
+    ← Stocker dans le cube
+    definir #FF0000.#808080 → adn_age
+    afficher #FF0000.#808080 → ecran
+}
