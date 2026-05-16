@@ -559,30 +559,67 @@ pub fn executer_ligne(
     // ── si / sinon ──────────────────────────────────────
     } else if ligne.starts_with("si ") {
         let condition = ligne.trim_start_matches("si").trim()
-            .trim_end_matches('{').trim();
-        let resultat = evaluer_condition(condition, mem);
+            .trim_end_matches('{').trim().to_string();
+        let resultat = evaluer_condition(&condition, mem);
 
         *idx += 1;
         let bloc_si = collecter_bloc(lignes, idx);
+        // idx pointe sur "} sinon {" ou "}"
 
-        // Chercher sinon
         let mut bloc_sinon: Vec<String> = Vec::new();
-        if *idx < lignes.len() && lignes[*idx].trim() == "sinon {" {
-            *idx += 1;
-            bloc_sinon = collecter_bloc(lignes, idx);
-            // idx reste sur le } de sinon — main fera +1
-        } else {
-            // Pas de sinon — reculer pour que main fasse +1 correctement
-            if *idx > 0 { *idx -= 1; }
+        if *idx < lignes.len() {
+            let prochaine = lignes[*idx].trim().to_string();
+
+            if prochaine.starts_with('}') && prochaine.contains("sinon") {
+                // } sinon { — avancer APRÈS le {
+                *idx += 1;
+                bloc_sinon = collecter_bloc(lignes, idx);
+                // idx pointe sur le } final du sinon
+                // on avance — main fera +1
+                // rien à faire
+            }
+            // } seul ou } sinon géré — idx pointe sur }
+            // main fait +1 automatiquement
         }
 
-        let bloc_actif = if resultat { &bloc_si } else { &bloc_sinon };
+        println!("{}si {} → {}",
+            indent, condition,
+            if resultat { "vrai" } else { "faux" });
+
+        let bloc_exec = if resultat { &bloc_si } else { &bloc_sinon };
         let mut sub = 0usize;
-        while sub < bloc_actif.len() {
-            let l = bloc_actif[sub].clone();
+        while sub < bloc_exec.len() {
+            let l = bloc_exec[sub].clone();
             let avant = sub;
-            executer_ligne(&l, mem, ctx, bloc_actif, &mut sub);
-            if sub == avant { sub += 1; } else { sub += 1; }
+            executer_ligne(&l, mem, ctx, bloc_exec, &mut sub);
+            if sub == avant { sub += 1; }
+        }
+
+        // Détecter sinon
+        let mut bloc_sinon: Vec<String> = Vec::new();
+        if *idx < lignes.len() {
+            let prochaine = lignes[*idx].trim().to_string();
+            if prochaine == "} sinon {"
+            || prochaine == "sinon {"
+            || prochaine == "sinon{" {
+                *idx += 1;
+                bloc_sinon = collecter_bloc(lignes, idx);
+                *idx += 1; // consommer le } du sinon
+            }
+            // sinon — idx reste où il est, main fait +1
+        }
+
+        println!("{}si {} → {}",
+            indent, condition,
+            if resultat { "vrai" } else { "faux" });
+
+        let bloc_exec = if resultat { &bloc_si } else { &bloc_sinon };
+        let mut sub = 0usize;
+        while sub < bloc_exec.len() {
+            let l = bloc_exec[sub].clone();
+            let avant = sub;
+            executer_ligne(&l, mem, ctx, bloc_exec, &mut sub);
+            if sub == avant { sub += 1; }
         }
 
     // ── tantque ─────────────────────────────────────────
@@ -784,33 +821,80 @@ pub fn executer_ligne(
                 crate::adn::encoder_type_texte(&val_str) // ← type texte
             };
 
-            let adn_str = crate::adn::vers_adn_str(&codons);
-            mem.definir(dst, &adn_str);
+            mem.definir_adn(dst, codons);
+
         }
 
     // ── DECODER ─────────────────────────────────────────────
     } else if ligne.starts_with("decoder ") {
         let reste = ligne.trim_start_matches("decoder").trim();
         if let Some((src, dst)) = reste.split_once(" → ") {
-            let adn_str = mem.eval(src.trim());
-            let codons  = crate::adn::depuis_adn_str(&adn_str);
-            let val     = crate::adn::decoder_auto(&codons); // ← auto !
-            mem.definir(dst.trim(), &val);
+            let src = src.trim();
+            let dst = dst.trim();
+
+            // ⚡ Lecture ADN natif d'abord
+            if let Some(codons) = mem.lire_adn(src) {
+                let val = crate::adn::decoder_auto(codons);
+                mem.definir(dst, &val);
+            } else {
+                // Fallback : ancienne string (compat)
+                let adn_str = mem.eval(src);
+                let codons  = crate::adn::depuis_adn_str(&adn_str);
+                let val     = crate::adn::decoder_auto(&codons);
+                mem.definir(dst, &val);
+            }
         }
 
-    // ── TRANSCRIRE : ADN → ARN (T → U) ─────────────────────
+    // ── TRANSCRIRE : ADN → ARN (T → U) en codons natifs ─────
     } else if ligne.starts_with("transcrire ") {
-        let reste = ligne.trim_start_matches("transcrire ").trim();
-        if let Some((src, dst)) = reste.split_once("→") {
+        let reste = ligne.trim_start_matches("transcrire").trim();
+        if let Some((src, dst)) = reste.split_once(" → ") {
             let src = src.trim();
             let dst = dst.trim();
             let adn_str = mem.eval(src);
-
-            let arn_str: String = adn_str.chars()
-                .map(|c| if c == 'T' { 'U' } else { c })
-                .collect();
-
+            // String → codons natifs → transcrire() → string ARN
+            let mut codons = crate::adn::depuis_adn_str(&adn_str);
+            for c in codons.iter_mut() {
+                c.transcrire();
+            }
+            let arn_str = crate::adn::vers_adn_str(&codons);
             mem.definir(dst, &arn_str);
+            println!("{}transcrire {} → {} (ARN)", indent, src, dst);
+        }
+
+    } else if ligne.starts_with("retroT ") {
+        let reste = ligne.trim_start_matches("retroT").trim();
+        if let Some((src, dst)) = reste.split_once(" → ") {
+            let src = src.trim();
+            let dst = dst.trim();
+            let arn_str = mem.eval(src);
+            let mut codons = crate::adn::depuis_adn_str(&arn_str);
+            for c in codons.iter_mut() {
+                c.retro_transcrire();
+            }
+            let adn_str = crate::adn::vers_adn_str(&codons);
+            mem.definir(dst, &adn_str);
+            println!("{}retroT {} → {} (ADN)", indent, src, dst);
+        }
+
+
+    // ── RETROT : ARN → ADN (U → T) restabilisation ──────────
+    } else if ligne.starts_with("retroT ") || ligne.starts_with("rétroT ") {
+        let reste = ligne.trim_start_matches("retroT")
+                        .trim_start_matches("rétroT").trim();
+        if let Some((src, dst)) = reste.split_once("→") {
+            let src = src.trim();
+            let dst = dst.trim();
+
+            if let Some(codons) = mem.lire_adn(src) {
+                let mut copie: Vec<crate::adn::Codon> = codons.clone();
+                for c in copie.iter_mut() {
+                    c.retro_transcrire();   // U → T (marqueurs effacés)
+                }
+                println!("{}  🧬 rétro-transcrit : {} → {} (U→T stable)",
+                    indent, src, dst);
+                mem.definir_adn(dst, copie);
+            }
         }
 
     // ── définir ─────────────────────────────────────────

@@ -13,36 +13,41 @@
 /// Gère les blocs imbriqués correctement
 pub fn collecter_bloc(lignes: &[String], idx: &mut usize) -> Vec<String> {
     let mut bloc: Vec<String> = Vec::new();
-    let mut prof = 1; // on est déjà dans un bloc ouvert
+    let mut prof = 1;
 
     while *idx < lignes.len() {
         let l = lignes[*idx].trim().to_string();
 
-        // Ligne vide ou commentaire — ignorer mais ne pas stocker
+        // Commentaires
         if l.is_empty() || l.starts_with('←') || l.starts_with("//") {
             *idx += 1;
             continue;
         }
 
-        // Ouverture d'un sous-bloc
-        let ouvre = compte_ouvertures(&l);
-        let ferme = compte_fermetures(&l);
-
-        // Si c'est une fermeture pure au niveau 1 — fin du bloc
-        if ferme > 0 && prof - ferme == 0 {
-            // idx reste sur ce } — l'appelant fera +1
+        // } sinon { — s'arrêter SANS avancer (l'appelant gère)
+        if l.starts_with('}') && l.contains("sinon") {
             break;
+        }
+
+        let ouvre = l.chars().filter(|&c| c == '{').count();
+        let ferme = l.chars().filter(|&c| c == '}').count();
+
+        // } seul — fin du bloc
+        if ferme > 0 && prof <= ferme {
+            break; // idx reste sur le }
         }
 
         prof += ouvre;
         prof -= ferme;
-
         bloc.push(l);
         *idx += 1;
     }
 
     bloc
 }
+
+// collecteur.rs — dans collecter_bloc
+// JUSTE AVANT le comptage { et }
 
 /// Compte les { dans une ligne
 fn compte_ouvertures(l: &str) -> usize {

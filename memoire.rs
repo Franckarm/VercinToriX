@@ -4,6 +4,7 @@
 // ========================================================
 
 use std::collections::HashMap;
+use crate::adn::Codon;   // ← AJOUTER
 
 // ── ETATS TRINAIRES/QUADRINAIRES ────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +104,7 @@ pub enum Valeur {
     Booleen(bool),
     Liste(Vec<String>),   // ← String pour simplicité d'itération
     Point(Point4D),
+    Adn(Vec<Codon>),
     Rien,
 }
 
@@ -143,6 +145,7 @@ impl Valeur {
             Valeur::Point(p)   => format!(
                 "Point4D({:.3},{:.3},{:.3},{:.3})", p.r, p.g, p.b, p.l
             ),
+            Valeur::Adn(c)     => crate::adn::vers_adn_str(c),
             Valeur::Rien => "rien".to_string(),
         }
     }
@@ -387,6 +390,7 @@ impl Memoire {
 
 
         expr.to_string()
+        
     }
 
     // ── Cube chromatique ─────────────────────────────────
@@ -409,4 +413,21 @@ impl Memoire {
     pub fn points_cube_hex(&self) -> Vec<String> {
         self.cube.iter().map(|p| p.to_hex()).collect()
     }
+
+    // ── Stockage ADN natif ───────────────────────────────
+    pub fn definir_adn(&mut self, nom: &str, codons: Vec<Codon>) {
+        let mut n = Noeud::new(nom);
+        n.valeur = Some(Valeur::Adn(codons));
+        n.etat   = Etat::Certain;
+        self.vive.insert(nom.to_string(), n);
+        println!("  \x1b[35m🧬\x1b[0m adn      : {} stocké en codons natifs", nom);
+    }
+
+    pub fn lire_adn(&self, nom: &str) -> Option<&Vec<Codon>> {
+        match self.vive.get(nom)?.valeur.as_ref()? {
+            Valeur::Adn(c) => Some(c),
+            _ => None,
+        }
+    }
+
 }
